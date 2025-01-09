@@ -2,7 +2,9 @@ package data
 
 import (
 	"context"
+	"crypto/sha256"
 	"database/sql"
+	"errors"
 	"time"
 )
 
@@ -16,6 +18,12 @@ type User struct {
 
 type UserModel struct {
 	DB *sql.DB
+}
+
+var AnonymousUser = &User{}
+
+func (m *User) IsAnonymous() bool {
+	return m == AnonymousUser
 }
 
 func (m UserModel) Insert(user *User) error {
@@ -54,6 +62,38 @@ func (m UserModel) GetByPhoneNumber(PhoneNumber string) (*User, error) {
 
 	if err != nil {
 		return nil, err
+	}
+
+	return &user, nil
+}
+
+func (m UserModel) GetForToken(tokenScope, tokenPlainText string) (*User, error) {
+
+	tokenHash := sha256.Sum256([]byte(tokenPlainText))
+
+	query := `SELECT users.id, users.created_at, users.name,  users.phone_number,  users.version
+	FROM users
+	INNER JOIN tokens
+	ON users.id = tokens.user_id
+	WHERE tokens.hash = $1 AND tokens.scope = $2 AND tokens.expiry > $3
+	`
+
+	args := []interface{}{tokenHash[:], tokenScope, time.Now()}
+
+	var user User
+
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	err := m.DB.QueryRowContext(ctx, query, args...).Scan(&user.ID, &user.CreatedAt, &user.Name, &user.PhoneNumber, &user.Version)
+	if err != nil {
+		switch {
+		case errors.Is(err, sql.ErrNoRows):
+			return nil, ErrRecordNotFound
+		default:
+			return nil, err
+
+		}
 	}
 
 	return &user, nil

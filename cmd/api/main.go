@@ -7,9 +7,11 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"sync"
 	"time"
 
 	"github.com/go-redis/redis/v8"
+	"github.com/joho/godotenv"
 	"github.com/julienschmidt/httprouter"
 	_ "github.com/lib/pq"
 	"github.com/vishaaxl/cheershare/internal/data"
@@ -55,9 +57,14 @@ type application struct {
 	models data.Models
 	logger *log.Logger
 	cache  *redis.Client
+	wg     sync.WaitGroup
 }
 
 func main() {
+	err := godotenv.Load()
+	if err != nil {
+		log.Fatalf("Error loading .env file: %v", err)
+	}
 	/*
 	   Configuration includes:
 	   - `port`: The port on which the server will run (default is 4000).
@@ -121,6 +128,13 @@ func main() {
 
 	router := httprouter.New()
 	router.HandlerFunc(http.MethodPost, "/signup", app.handleUserSignupAndVerification)
+	router.HandlerFunc(http.MethodGet, "/protected", app.requireAuthenticatedUser(func(w http.ResponseWriter, r *http.Request) {
+		err := app.writeJSON(w, http.StatusOK, envelope{"data": "Protected"}, nil)
+		if err != nil {
+			app.logger.Println(err)
+			w.WriteHeader(500)
+		}
+	}))
 
 	/*
 	   Server configuration:
@@ -131,7 +145,7 @@ func main() {
 	*/
 	srv := &http.Server{
 		Addr:         fmt.Sprintf(":%d", app.config.port),
-		Handler:      router,
+		Handler:      app.recoverPanic(app.authenticate(router)),
 		IdleTimeout:  time.Minute,
 		ReadTimeout:  10 * time.Second,
 		WriteTimeout: 30 * time.Second,

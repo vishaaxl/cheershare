@@ -6,8 +6,11 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"os"
 	"time"
 
+	"github.com/twilio/twilio-go"
+	api "github.com/twilio/twilio-go/rest/api/v2010"
 	"github.com/vishaaxl/cheershare/internal/data"
 )
 
@@ -177,7 +180,13 @@ func (app *application) handleUserSignupAndVerification(w http.ResponseWriter, r
 			return
 		}
 
-		app.logger.Println("Generated OTP for", input.PhoneNumber, ":", otp)
+		app.background(func() {
+			err := app.sendOTPViaTwilio(otp, input.PhoneNumber)
+			if err != nil {
+				app.logger.Println("Error sending OTP via Twilio:", err)
+			}
+		})
+
 		app.writeJSON(w, http.StatusOK, envelope{"success": true, "message": "OTP sent successfully"}, nil)
 		return
 	}
@@ -222,4 +231,52 @@ func (app *application) handleUserSignupAndVerification(w http.ResponseWriter, r
 		"message": "User registered successfully",
 		"token":   token,
 	}, nil)
+}
+
+// sendOTPViaTwilio sends an OTP to the specified phone number using Twilio's messaging API.
+//
+// Parameters:
+// - otp: The one-time password to be sent in the message body.
+// - phoneNumber: The recipient's phone number without the country code.
+//
+// The function uses Twilio's Go SDK to create and send a message with the provided OTP.
+// The `from` phone number is pre-configured to be a Twilio-registered number.
+//
+// Returns:
+// - An error if the OTP could not be sent successfully.
+// - nil if the message was sent without issues.
+func (app *application) sendOTPViaTwilio(otp, phoneNumber string) error {
+	client := twilio.NewRestClientWithParams(twilio.ClientParams{
+		Username: os.Getenv("TWILIO_SID"),
+		Password: os.Getenv("TWILIO_API_KEY"),
+	})
+
+	// Set up the parameters for the message.
+	params := &api.CreateMessageParams{}
+	params.SetBody(fmt.Sprintf(
+		"Thank you for choosing Cheershare! Your one-time password is %v.",
+		otp,
+	))
+	params.SetFrom(os.Getenv("TWILIO_PHONE_NUMBER")) // Twilio-registered phone number.
+	params.SetTo(fmt.Sprintf("+91%v", phoneNumber))  // Format recipient's number with country code.
+
+	const maxRetries = 3 // Number of retries
+	var lastErr error    // Stores the last error encountered
+
+	// Attempt to send the message with retries.
+	for attempt := 1; attempt <= maxRetries; attempt++ {
+		resp, err := client.Api.CreateMessage(params)
+		if err == nil {
+			fmt.Printf("OTP sent successfully. Twilio response SID: %v\n", resp.Sid)
+			return nil
+		}
+
+		// Log the error for debugging.
+		lastErr = fmt.Errorf("attempt %d: failed to send OTP via Twilio: %w", attempt, err)
+		fmt.Println(lastErr)
+
+		time.Sleep(2 * time.Second)
+	}
+
+	return fmt.Errorf("all retries failed to send OTP via Twilio: %w", lastErr)
 }
