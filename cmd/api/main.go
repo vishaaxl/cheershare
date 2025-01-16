@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"database/sql"
-	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -140,22 +139,12 @@ func main() {
 	   - Timeouts: Configured for idle, read, and write operations.
 	   - Error logging: Logs errors during server startup or operation.
 	*/
-	srv := &http.Server{
-		Addr:         fmt.Sprintf(":%d", app.config.port),
-		Handler:      app.recoverPanic(app.authenticate(router)),
-		IdleTimeout:  time.Minute,
-		ReadTimeout:  10 * time.Second,
-		WriteTimeout: 30 * time.Second,
-	}
-
-	// Log server start information
-	app.logger.Printf("Starting server on port %d in %s mode", app.config.port, app.config.env)
-
-	// Start the server and handle potential errors
-	err = srv.ListenAndServe()
+	// Call app.serve() to start the server.
+	err = app.serve()
 	if err != nil {
-		app.logger.Fatalf("Could not start server: %s", err)
+		logger.Fatal(err, nil)
 	}
+
 }
 
 func connectDB(cfg db) (*sql.DB, error) {
