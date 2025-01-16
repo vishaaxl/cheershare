@@ -53,11 +53,12 @@ applications struct:
   - `redis`: A Redis client instance for caching.
 */
 type application struct {
+	wg     sync.WaitGroup
 	config config
 	models data.Models
+
 	logger *log.Logger
 	cache  *redis.Client
-	wg     sync.WaitGroup
 }
 
 func main() {
@@ -65,6 +66,8 @@ func main() {
 	if err != nil {
 		log.Fatalf("Error loading .env file: %v", err)
 	}
+
+	ensureUploadDirExists()
 	/*
 	   Configuration includes:
 	   - `port`: The port on which the server will run (default is 4000).
@@ -128,13 +131,7 @@ func main() {
 
 	router := httprouter.New()
 	router.HandlerFunc(http.MethodPost, "/signup", app.handleUserSignupAndVerification)
-	router.HandlerFunc(http.MethodGet, "/protected", app.requireAuthenticatedUser(func(w http.ResponseWriter, r *http.Request) {
-		err := app.writeJSON(w, http.StatusOK, envelope{"data": "Protected"}, nil)
-		if err != nil {
-			app.logger.Println(err)
-			w.WriteHeader(500)
-		}
-	}))
+	router.HandlerFunc(http.MethodPost, "/upload-creative", app.requireAuthenticatedUser(app.uploadCreativeHandler))
 
 	/*
 	   Server configuration:

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 )
 
 type envelope map[string]interface{}
@@ -125,4 +126,14 @@ func (app *application) readJSON(w http.ResponseWriter, r *http.Request, dst int
 	}
 
 	return nil
+}
+
+func ensureUploadDirExists() {
+	uploadDir := "./uploads"
+	if _, err := os.Stat(uploadDir); os.IsNotExist(err) {
+		err := os.MkdirAll(uploadDir, os.ModePerm)
+		if err != nil {
+			fmt.Println("Unable to create uploads directory:", err)
+		}
+	}
 }

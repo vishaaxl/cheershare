@@ -187,6 +187,7 @@ func (app *application) handleUserSignupAndVerification(w http.ResponseWriter, r
 			}
 		})
 
+		app.logger.Println(otp)
 		app.writeJSON(w, http.StatusOK, envelope{"success": true, "message": "OTP sent successfully"}, nil)
 		return
 	}
