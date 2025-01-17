@@ -6,8 +6,9 @@ import (
 )
 
 type Models struct {
-	User  UserModel
-	Token TokenModel
+	User     UserModel
+	Creative CreativeModel
+	Token    TokenModel
 }
 
 var (
@@ -20,6 +21,9 @@ func NewModels(db *sql.DB) Models {
 			DB: db,
 		},
 		Token: TokenModel{
+			DB: db,
+		},
+		Creative: CreativeModel{
 			DB: db,
 		},
 	}

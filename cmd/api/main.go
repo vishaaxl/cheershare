@@ -131,6 +131,7 @@ func main() {
 	router := httprouter.New()
 	router.HandlerFunc(http.MethodPost, "/signup", app.handleUserSignupAndVerification)
 	router.HandlerFunc(http.MethodPost, "/upload-creative", app.requireAuthenticatedUser(app.uploadCreativeHandler))
+	router.HandlerFunc(http.MethodGet, "/scheduled", app.requireAuthenticatedUser(app.getScheduledCreativesHandler))
 
 	/*
 	   Server configuration:
@@ -139,7 +140,6 @@ func main() {
 	   - Timeouts: Configured for idle, read, and write operations.
 	   - Error logging: Logs errors during server startup or operation.
 	*/
-	// Call app.serve() to start the server.
 	err = app.serve(router)
 	if err != nil {
 		logger.Fatal(err, nil)

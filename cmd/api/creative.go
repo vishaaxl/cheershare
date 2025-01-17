@@ -7,8 +7,10 @@ import (
 	"os"
 	"path"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
+	"github.com/vishaaxl/cheershare/internal/data"
 )
 
 const MaxFileSize = 10 << 20
@@ -112,11 +114,65 @@ func (app *application) uploadFile(r *http.Request) (string, error) {
  * It processes the file upload, checks for errors, and returns a response with the uploaded file path.
  */
 func (app *application) uploadCreativeHandler(w http.ResponseWriter, r *http.Request) {
-	file, err := app.uploadFile(r)
+	/**
+	 * Extract the "scheduled_at" parameter from the request form data.
+	 * This represents the date when the creative will be scheduled.
+	 * If the "scheduled_at" parameter is missing, respond with a 400 Bad Request error.
+	 */
+	scheduledAtStr := r.FormValue("scheduled_at")
+	if scheduledAtStr == "" {
+		app.errorResponse(w, http.StatusBadRequest, "scheduled_at is required")
+		return
+	}
+
+	scheduledAt, err := time.Parse("2006-01-02", scheduledAtStr)
+	if err != nil {
+		app.errorResponse(w, http.StatusBadRequest, "invalid date format for scheduled_at")
+		return
+	}
+
+	/**
+	 * Validate that the scheduled date is not in the past.
+	 * If the date is earlier than the current date, respond with a 400 Bad Request error.
+	 */
+	if scheduledAt.Before(time.Now()) {
+		app.errorResponse(w, http.StatusBadRequest, "cannot set scheduled_at before today")
+		return
+	}
+
+	/**
+	 * Handle the file upload using the app.uploadFile method.
+	 * If the file upload fails, respond with a 400 Bad Request error containing the error message.
+	 */
+	uploadedFile, err := app.uploadFile(r)
 	if err != nil {
 		app.errorResponse(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
-	app.writeJSON(w, http.StatusOK, envelope{"uploaded": file}, nil)
+	creative := &data.Creative{
+		CreativeURL: uploadedFile,
+		ScheduledAt: scheduledAt,
+		UserID:      app.contextGetUser(r).ID,
+	}
+
+	err = app.models.Creative.Insert(creative)
+	if err != nil {
+		app.logger.Println("Error saving creative:", err)
+		app.errorResponse(w, http.StatusInternalServerError, "failed to save creative")
+		return
+	}
+
+	app.writeJSON(w, http.StatusOK, envelope{"creative": creative}, nil)
+}
+
+func (app *application) getScheduledCreativesHandler(w http.ResponseWriter, r *http.Request) {
+	scheduledCreatives, err := app.models.Creative.GetScheduledCreatives()
+	if err != nil {
+
+		app.errorResponse(w, http.StatusInternalServerError, "failed to fetch scheduled creatives")
+		return
+	}
+
+	app.writeJSON(w, http.StatusOK, envelope{"scheduled_creatives": scheduledCreatives}, nil)
 }
